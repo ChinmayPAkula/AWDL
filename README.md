@@ -74,8 +74,6 @@ AWDL Source (.awdl)
 - Target-code generator (executable JSON plan)
 - Runtime interpreter with retry-based error recovery
 
-See [`PPT_BRIEF.md`](PPT_BRIEF.md) for the full project write-up (problem statement, objectives, scope, background study, methodology, architecture).
-
 ## Usage
 
 ```bash
