@@ -1,0 +1,11 @@
+agent Researcher {
+  input: query : string
+
+  step search(query) -> results : list
+  step summarize(results) -> summary : string
+  step validate(summary) -> final : string
+
+  search -> summarize -> validate
+
+  on_error: retry(3)
+}
