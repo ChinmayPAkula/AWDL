@@ -1,0 +1,10 @@
+# Expected outcome: semantic error.
+# 'a' consumes 'b_out' (produced by step b) and 'b' consumes 'a_out'
+# (produced by step a) -> a depends on b and b depends on a -> cycle.
+
+agent Looper {
+  input: query : string
+
+  step a(query, b_out) -> a_out : string
+  step b(a_out) -> b_out : string
+}

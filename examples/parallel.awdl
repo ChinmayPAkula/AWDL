@@ -1,0 +1,15 @@
+# Expected outcome: no semantic errors. 'fetch_news' and 'fetch_weather'
+# both only depend on the agent's input (not on each other), so the
+# optimizer's parallel_levels() groups them into the same level; 'combine'
+# depends on both and lands in the next level.
+
+agent Reporter {
+  input: query : string
+
+  step fetch_news(query) -> news : string
+  step fetch_weather(query) -> weather : string
+  step combine(news, weather) -> report : string
+
+  fetch_news -> combine
+  fetch_weather -> combine
+}

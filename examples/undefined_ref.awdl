@@ -1,0 +1,12 @@
+# Expected outcome: semantic error.
+# step 'summarize' consumes 'notes', which is never declared as the agent's
+# input nor produced as any step's output -> undefined-reference error.
+
+agent Researcher {
+  input: query : string
+
+  step search(query) -> results : list
+  step summarize(notes) -> summary : string
+
+  search -> summarize
+}

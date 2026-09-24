@@ -1,0 +1,14 @@
+# Expected outcome: no semantic errors, but the optimizer removes 'unused'.
+# 'unused' consumes the agent's input, produces 'scratch', but nothing
+# consumes 'scratch' and 'unused' is not the endpoint of any chain
+# -> dead-step elimination removes it.
+
+agent Researcher {
+  input: query : string
+
+  step search(query) -> results : list
+  step unused(query) -> scratch : string
+  step summarize(results) -> summary : string
+
+  search -> summarize
+}

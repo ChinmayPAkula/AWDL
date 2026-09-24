@@ -1,0 +1,9 @@
+# Expected outcome: semantic error.
+# 'search' is declared twice in the same agent -> duplicate-step error.
+
+agent Researcher {
+  input: query : string
+
+  step search(query) -> results : list
+  step search(query) -> results2 : list
+}
