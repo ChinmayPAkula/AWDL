@@ -94,3 +94,22 @@ interpreter) were removed; the PRD's own `--fail`-flag-driven
 Result: 54/54 tests pass (7 new in `test_codegen.py`); all 9 example files
 (7 original + 2 typed-parameter ones from step 2) still compile through
 Stages 1-5 with no regressions.
+
+## 2026-10-22 - Step 4: Step registry
+
+Added `awdl/steps.py`: `StepRegistry` maps a step name to a Python callable
+taking the step's inputs in declared order and returning its output. Any
+step with nothing registered falls back to `default_mock(output_type, ...)`,
+which fabricates a value matching the declared type (so the interpreter's
+own runtime type check, coming in step 5, never rejects a pure mock).
+
+Three features exist specifically to make runtime behavior demonstrable
+without hand-writing real flaky/slow code: `register()` for a single
+override, `load_file()` for a user's `--steps file.py` exposing a module-
+level `STEPS = {name: fn}` dict, `inject_failure(step, times)` (raises
+`StepFailure` for the first N calls, then calls through - this is how
+`on_error: retry(n)` gets demonstrated), and `set_delay()`/
+`set_default_delay()` (sleeps before returning, so a parallel level's timing
+is visibly different from running the same steps sequentially).
+
+Result: 60/60 tests pass (6 new in `test_steps.py`).
