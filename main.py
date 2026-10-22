@@ -5,11 +5,16 @@ Entry point for the AWDL prototype (Phase 1 + Phase 2 + Phase 3).
 
 Usage:
     python main.py examples/researcher.awdl
+    python main.py examples/parallel.awdl --sequential
 
-Runs the source file through Stages 1-5 (lexing, parsing, semantic analysis,
-IR generation, optimization) and prints the results. Stages 6-7 (target code
-generation and interpretation/execution) are available behind CLI flags
-added in a later Phase 3 build step; see --help once those land.
+Runs the source file through all seven compiler stages - lexing, parsing,
+semantic analysis, IR generation, optimization, target code generation, and
+execution - and prints the results at each stage. Steps have no real
+implementation here, so Stage 7 runs them as deterministic mocks (see
+awdl/steps.py); this matches the project's declared scope (steps are
+mocked/stubbed, never a live LLM call). --sequential forces Stage 7 to run
+one step at a time instead of running each parallel level concurrently, so
+the optimizer's effect is directly observable.
 """
 
 import sys
@@ -18,14 +23,19 @@ from awdl.parser import parse
 from awdl.semantic import analyze
 from awdl.ir import build_ir, topo_order, CycleError
 from awdl.optimizer import optimize
+from awdl.codegen import generate_plan, plan_to_json
+from awdl.interpreter import execute, AWDLRuntimeError
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python main.py <file.awdl>")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sequential = "--sequential" in sys.argv[1:]
+
+    if len(args) != 1:
+        print("Usage: python main.py <file.awdl> [--sequential]")
         sys.exit(1)
 
-    path = sys.argv[1]
+    path = args[0]
     with open(path, "r") as f:
         source = f.read()
 
@@ -109,10 +119,27 @@ def main():
         print(f"  levels after  (parallel-grouped): {report.levels_after}")
         print()
 
-        # Stages 6 (target code generation) and 7 (interpretation/execution)
-        # are added behind CLI flags in a later Phase 3 step, per the Phase 3
-        # PRD's requirement that bare `python main.py file.awdl` keep
-        # producing exactly the Stage 1-5 output it always has.
+        print(f"Stage 6: Target Code Generation - agent '{agent.name}'")
+        plan = generate_plan(optimized_ir, report, chain_endpoints)
+        print(plan_to_json(plan))
+        print()
+
+        print(f"Stage 7: Interpretation and Execution - agent '{agent.name}'"
+              f"{' (sequential)' if sequential else ' (parallel levels)'}")
+        try:
+            result = execute(plan, sequential=sequential)
+        except AWDLRuntimeError as e:
+            for r in e.result.records:
+                print(f"  {r.step:<12} {r.status:<8} {r.attempts} attempt(s)  {r.duration_ms:.1f} ms"
+                      + (f"  ({r.error})" if r.error else ""))
+            print(f"  FAILED: {e}\n")
+            continue
+
+        for r in result.records:
+            print(f"  {r.step:<12} {r.status:<8} {r.attempts} attempt(s)  {r.duration_ms:.1f} ms")
+        print(f"  final outputs: {result.final_outputs}")
+        print(f"  total: {result.total_ms:.1f} ms")
+        print()
 
 
 if __name__ == "__main__":

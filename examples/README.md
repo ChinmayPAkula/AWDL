@@ -18,8 +18,15 @@ Run any of them with:
 python main.py examples/<file>.awdl
 ```
 
-This runs Stages 1-5 (lexing through optimization). Stages 6-7 (target code
-generation and execution) are available behind CLI flags added later in
-Phase 3 - see the root `README.md` once those land, along with more fixtures
-(retry recovery/exhaustion, diamond/wide dependency shapes, multi-agent
-files) that specifically exercise the runtime.
+This runs all 7 stages: lexing, parsing, semantic analysis, IR generation,
+optimization, target code generation, and execution. For a file with
+semantic errors, Stages 4-7 are skipped for that agent and the errors are
+reported at Stage 3 instead.
+
+Add `--sequential` to force Stage 7 to run one step at a time instead of
+running each parallel level concurrently - try it on `parallel.awdl` to see
+both modes produce the same result:
+
+```bash
+python main.py examples/parallel.awdl --sequential
+```

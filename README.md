@@ -28,6 +28,8 @@ agent Researcher {
 }
 ```
 
+Parameters can optionally carry a type (`step summarize(results : list) -> summary : string`); the semantic analyzer then checks it matches what actually produces that value.
+
 ## Compiler pipeline
 
 ```
@@ -44,59 +46,58 @@ AWDL Source (.awdl)
                                                     |
                                                     v
                                               [ Optimizer ]
-                                    (dead-step elimination, reordering)
+                                    (dead-step elimination, parallel-level grouping)
                                                     |
                                                     v
                                         [ Target Code Generator ]
                                                     |
                                                     v
-                                        Executable Plan (JSON)
+                                        Executable Plan (JSON, grouped into levels)
                                                     |
                                                     v
                               [ Runtime Interpreter / Execution Engine ]
-                                    (executes steps, handles retries)
+                                (executes each level, parallel steps concurrently,
+                                            handles retries)
                                                     |
                                                     v
                                           Final Output / Results
 ```
 
-## Current status
+## Status: all three phases complete
 
-**Implemented (Phase 1):**
-- `awdl/lexer.py` — full tokenizer for keywords (`agent`, `input`, `step`, `on_error`, `retry`), identifiers, numbers, symbols (`{ } ( ) : -> ,`), `#` comments, with line/column tracking and `LexerError` reporting.
-- `awdl/parser.py` — recursive-descent parser producing a full AST (`awdl/ast_nodes.py`): agent blocks, input declarations, step declarations, data-flow chains (`a -> b -> c`), and `on_error: retry(n)` directives, with panic-mode error recovery so a single mistake doesn't stop the rest of the file from being checked.
+- **Phase 1** — `awdl/lexer.py` + `awdl/parser.py`: full tokenizer and recursive-descent parser building a complete AST, with panic-mode syntax-error recovery.
+- **Phase 2** — `awdl/symbol_table.py` + `awdl/semantic.py` + `awdl/ir.py` + `awdl/optimizer.py`: scoped symbol table, semantic analysis (undefined references, known types, dependency cycles, chain consistency), a DAG intermediate representation, and an optimizer doing dead-step elimination and parallel-level grouping.
+- **Phase 3** — `awdl/codegen.py` + `awdl/steps.py` + `awdl/interpreter.py`:
+  - **Typed parameters** (`step s(x : string)`, backward compatible with untyped ones) and producer/consumer type-mismatch detection, completing the semantic analysis gap from Phase 2.
+  - **Target code generation**: the optimized DAG is lowered into a JSON execution plan, grouped into the same parallel levels the optimizer computed.
+  - **Step registry**: maps a step name to a real Python function; any step with nothing registered falls back to a deterministic mock, so every `.awdl` file runs end to end with zero setup (steps are mocked/stubbed by design — AWDL orchestrates, it doesn't ship an LLM client).
+  - **Runtime interpreter**: executes the plan level by level, running each level's independent steps concurrently (a thread pool) unless `--sequential` is passed; retries a failing step per its `on_error: retry(n)` policy (n retries after the first attempt, so n + 1 attempts total); if a step still fails, steps that depend on it are marked skipped rather than run, while the rest of that step's level is still allowed to finish.
 
-**Implemented (Phase 2):**
-- `awdl/symbol_table.py` — a scoped symbol table per agent, tracking the declared input and every step's params/output/type, with `resolve(name)` mapping a variable name back to whichever declaration produces it.
-- `awdl/semantic.py` — semantic analyzer validating undefined references, known types, dependency cycles (DFS), and chain consistency; collects every error instead of stopping at the first one.
-- `awdl/ir.py` — lowers a semantically-valid agent into a DAG (`AgentIR` of `IRNode`s with `depends_on` edges); `topo_order()` gives a valid execution order.
-- `awdl/optimizer.py` — dead-step elimination and `parallel_levels()` grouping, with an `OptimizationReport` showing the before/after effect.
-- `main.py` — CLI entry point running a `.awdl` file through all five stages: lexing, parsing, semantic analysis, IR generation, and optimization.
-
-See [`PHASE2_PROGRESS.md`](PHASE2_PROGRESS.md) for implementation notes and design decisions.
-
-**Implemented (Phase 3):**
-- `awdl/codegen.py` — lowers an optimized `AgentIR` into a JSON-serializable execution plan (steps in topological order, each with inputs/output/type/dependencies, plus the agent's `on_error` policy).
-- `awdl/interpreter.py` — a runtime engine that executes a plan in order, threading each step's output into an environment for later steps to consume, with retry-based error recovery (`on_error: retry(n)`) and a clear `StepExecutionError` once retries are exhausted. Step functions are mocked/stubbed per the project's declared scope; real functions can be registered per step name.
-- `main.py` — now runs all seven stages: lexing, parsing, semantic analysis, IR generation, optimization, target code generation, and execution.
-- `demo_retry.py` — a standalone script demonstrating retry actually recovering from (and separately, exhausting against) a real failing step function, since `main.py`'s generic stubs never fail on their own.
-
-See [`PHASE3_PROGRESS.md`](PHASE3_PROGRESS.md) for implementation notes, design decisions, and what's still out of scope (real LLM calls, concurrent execution of parallel levels, DAG visualization).
+See [`docs/DEVELOPMENT_LOG.md`](docs/DEVELOPMENT_LOG.md) for the build history and design decisions made along the way, including a real parser bug found and fixed by the test suite.
 
 ## Usage
 
 ```bash
-python main.py examples/researcher.awdl       # valid pipeline, all 7 stages run
-python main.py examples/broken.awdl           # syntax-error recovery
-python main.py examples/undefined_ref.awdl    # semantic error: undefined reference
-python main.py examples/cycle.awdl            # semantic error: dependency cycle
-python main.py examples/duplicate_step.awdl   # semantic error: duplicate step
-python main.py examples/dead_step.awdl        # optimizer: dead-step elimination
-python main.py examples/parallel.awdl         # optimizer: parallel-level grouping
-python demo_retry.py                          # runtime retry: recovers, then exhausts
+python main.py examples/researcher.awdl            # valid pipeline, all 7 stages run
+python main.py examples/researcher_typed.awdl      # typed-parameter variant, also passes
+python main.py examples/type_mismatch.awdl         # semantic error: type mismatch
+python main.py examples/broken.awdl                # syntax-error recovery
+python main.py examples/undefined_ref.awdl         # semantic error: undefined reference
+python main.py examples/cycle.awdl                 # semantic error: dependency cycle
+python main.py examples/duplicate_step.awdl        # semantic error: duplicate step
+python main.py examples/dead_step.awdl             # optimizer: dead-step elimination
+python main.py examples/parallel.awdl              # optimizer + runtime: parallel levels
+python main.py examples/parallel.awdl --sequential # same file, forced one-step-at-a-time
 ```
 
 See [`examples/README.md`](examples/README.md) for what each file demonstrates.
+
+### Running the test suite
+
+```bash
+python -m pip install pytest pytest-cov
+python -m pytest tests/ -q
+```
 
 ## Project structure
 
@@ -105,24 +106,17 @@ awdl/
   awdl/
     lexer.py          # Stage 1: lexical analysis
     parser.py          # Stage 2: syntax analysis -> AST
-    ast_nodes.py        # AST node definitions
+    ast_nodes.py        # AST node definitions (including typed Param)
     symbol_table.py      # Stage 3: scoped symbol table
-    semantic.py           # Stage 3: semantic analysis
+    semantic.py           # Stage 3: semantic analysis (incl. type mismatch)
     ir.py                  # Stage 4: DAG intermediate representation
     optimizer.py             # Stage 5: dead-step elimination, parallel grouping
-    codegen.py                 # Stage 6: JSON execution plan
-    interpreter.py               # Stage 7: runtime execution, retry recovery
-  examples/
-    researcher.awdl        # valid example pipeline
-    broken.awdl              # syntax error + recovery
-    undefined_ref.awdl         # semantic error: undefined reference
-    cycle.awdl                   # semantic error: dependency cycle
-    duplicate_step.awdl            # semantic error: duplicate step
-    dead_step.awdl                   # optimizer: dead-step elimination
-    parallel.awdl                     # optimizer: parallel-level grouping
-    retry_demo.awdl                     # runtime: on_error retry (see demo_retry.py)
-  main.py            # CLI entry point
-  demo_retry.py      # standalone retry-recovery / retry-exhaustion demo
+    codegen.py                 # Stage 6: JSON execution plan (levels)
+    steps.py                    # step registry: mocks, real functions, failure injection
+    interpreter.py                # Stage 7: concurrent execution, retry recovery
+  examples/              # sample .awdl programs, one per behavior (see examples/README.md)
+  tests/                 # pytest suite covering every module
+  main.py                # CLI entry point
 ```
 
 ## Author

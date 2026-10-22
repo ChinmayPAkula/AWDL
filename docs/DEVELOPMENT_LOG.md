@@ -113,3 +113,40 @@ level `STEPS = {name: fn}` dict, `inject_failure(step, times)` (raises
 is visibly different from running the same steps sequentially).
 
 Result: 60/60 tests pass (6 new in `test_steps.py`).
+
+## 2026-10-22 - Step 5 and scope cut: interpreter, then simplifying back to the proposal
+
+Added `awdl/interpreter.py`: `execute(plan, entry_value, registry, sequential)`
+runs a plan level by level, concurrently within a level via
+`concurrent.futures.ThreadPoolExecutor` by default (a shared environment dict
+is only written by the main thread after a level's futures are all
+collected - workers only ever read a snapshot taken before the level
+starts), retries a failing or wrongly-typed step per `on_error: retry(n)`
+(n retries after the first attempt, n + 1 attempts total), and marks
+downstream-dependent steps "skipped" without running them if a step
+ultimately fails, while letting the rest of that level finish.
+`AWDLRuntimeError` is raised on failure but carries the full per-step
+`ExecutionResult` as `.result`, so a caller can still report everything that
+happened. 8 new tests in `test_interpreter.py` cover end-to-end execution,
+sequential-vs-parallel equivalence, retry recovery, retry exhaustion with
+skip propagation, a no-retry policy failing on the first attempt, a wrong
+return type being treated as a runtime error, and bad input being rejected
+before anything runs.
+
+At this point an much larger internal draft PRD for Phase 3 had ballooned
+the plan to include a full `argparse` CLI with a dozen flags, Graphviz DOT
+export, a generated benchmark suite up to 1000-step pipelines, 85% coverage
+targets, and eight separate documentation files - none of which the actual
+Phase 1 proposal asked for. Per explicit direction, the scope was cut back
+down to exactly what Phase 1 promised: typed parameters completing semantic
+analysis, a JSON target-code generator, and a runtime interpreter with
+retry-based recovery. `main.py` was wired up simply - all 7 stages always
+run for a clean agent, with one `--sequential` flag to demonstrate the
+optimizer's parallel-level grouping actually being honored at runtime - with
+no separate CLI flag surface, no DOT export, and no generated benchmark
+suite. `README.md` and `PHASE3_PROGRESS.md` were rewritten to describe this
+final, simpler state rather than the abandoned larger draft.
+
+Result: 68/68 tests pass; all 9 example files run cleanly through all 7
+stages via `python main.py <file>.awdl`, with `--sequential` verified to
+produce identical final output to the default concurrent path.
