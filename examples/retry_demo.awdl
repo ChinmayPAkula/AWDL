@@ -1,0 +1,13 @@
+# Not run via main.py's generic stubs (those never fail). Run via
+# demo_retry.py instead, which registers a real "flaky" step function to
+# demonstrate on_error: retry(n) actually recovering from a failure.
+
+agent Fetcher {
+  input: query : string
+
+  step fetch(query) -> result : string
+
+  fetch
+
+  on_error: retry(3)
+}

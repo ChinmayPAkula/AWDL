@@ -1,20 +1,26 @@
 """
 main.py
 -------
-Entry point for the AWDL prototype (Phase 1 + Phase 2).
+Entry point for the AWDL prototype (Phase 1 + Phase 2 + Phase 3).
 
 Usage:
     python main.py examples/researcher.awdl
     python main.py examples/broken.awdl
 
-Runs the source file through:
+Runs the source file through all seven compiler stages:
     1. Lexical Analysis     (tokenize)
     2. Syntax Analysis      (parse -> AST)
     3. Semantic Analysis    (symbol table, type/reference/cycle checks)
     4. Intermediate Representation (AST -> DAG)
     5. Optimization         (dead-step elimination, parallel-level grouping)
+    6. Target Code Generation (optimized DAG -> JSON execution plan)
+    7. Interpretation and Execution (runs the plan, with retry-based recovery)
 
-and prints the results. Target code generation and execution are Phase 3 work.
+and prints the results at each stage. Steps have no real implementation
+registered here, so Stage 7 runs them as deterministic stubs (see
+awdl/interpreter.py) purely to demonstrate the execution engine end-to-end -
+this matches the project's declared scope of mocked/stubbed step functions
+rather than live LLM calls.
 """
 
 import sys
@@ -23,6 +29,8 @@ from awdl.parser import parse
 from awdl.semantic import analyze
 from awdl.ir import build_ir, topo_order, CycleError
 from awdl.optimizer import optimize
+from awdl.codegen import generate_plan, to_json
+from awdl.interpreter import Interpreter, StepExecutionError, default_step_function
 
 
 def main():
@@ -108,6 +116,28 @@ def main():
         print(f"  dead steps removed: {report.removed_dead_steps or '(none)'}")
         print(f"  levels before (sequential): {report.levels_before}")
         print(f"  levels after  (parallel-grouped): {report.levels_after}")
+        print()
+
+        print(f"Stage 6: Target Code Generation - agent '{agent.name}'")
+        plan = generate_plan(optimized_ir)
+        print(to_json(plan))
+        print()
+
+        print(f"Stage 7: Interpretation and Execution - agent '{agent.name}'")
+        entry_type = symtab.input_decl.type_name if symtab.input_decl else "string"
+        entry_value = default_step_function(entry_type)()
+        print(f"  entry input {plan['entry_input']!r} = {entry_value!r} (stubbed - no real step functions registered)")
+        interpreter = Interpreter()
+        try:
+            env = interpreter.run(plan, entry_value)
+        except StepExecutionError as e:
+            for line in interpreter.trace:
+                print(f"  {line}")
+            print(f"  FAILED: {e}\n")
+            continue
+        for line in interpreter.trace:
+            print(f"  {line}")
+        print(f"  final variables: {env}")
         print()
 
 

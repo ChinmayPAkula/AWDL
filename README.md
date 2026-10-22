@@ -75,21 +75,25 @@ AWDL Source (.awdl)
 
 See [`PHASE2_PROGRESS.md`](PHASE2_PROGRESS.md) for implementation notes and design decisions.
 
-**Planned (Phase 3):**
-- Target-code generator (executable JSON plan)
-- Runtime interpreter with retry-based error recovery
-- Real concurrent execution of parallel levels
+**Implemented (Phase 3):**
+- `awdl/codegen.py` — lowers an optimized `AgentIR` into a JSON-serializable execution plan (steps in topological order, each with inputs/output/type/dependencies, plus the agent's `on_error` policy).
+- `awdl/interpreter.py` — a runtime engine that executes a plan in order, threading each step's output into an environment for later steps to consume, with retry-based error recovery (`on_error: retry(n)`) and a clear `StepExecutionError` once retries are exhausted. Step functions are mocked/stubbed per the project's declared scope; real functions can be registered per step name.
+- `main.py` — now runs all seven stages: lexing, parsing, semantic analysis, IR generation, optimization, target code generation, and execution.
+- `demo_retry.py` — a standalone script demonstrating retry actually recovering from (and separately, exhausting against) a real failing step function, since `main.py`'s generic stubs never fail on their own.
+
+See [`PHASE3_PROGRESS.md`](PHASE3_PROGRESS.md) for implementation notes, design decisions, and what's still out of scope (real LLM calls, concurrent execution of parallel levels, DAG visualization).
 
 ## Usage
 
 ```bash
-python main.py examples/researcher.awdl       # valid pipeline
+python main.py examples/researcher.awdl       # valid pipeline, all 7 stages run
 python main.py examples/broken.awdl           # syntax-error recovery
 python main.py examples/undefined_ref.awdl    # semantic error: undefined reference
 python main.py examples/cycle.awdl            # semantic error: dependency cycle
 python main.py examples/duplicate_step.awdl   # semantic error: duplicate step
 python main.py examples/dead_step.awdl        # optimizer: dead-step elimination
 python main.py examples/parallel.awdl         # optimizer: parallel-level grouping
+python demo_retry.py                          # runtime retry: recovers, then exhausts
 ```
 
 See [`examples/README.md`](examples/README.md) for what each file demonstrates.
@@ -106,6 +110,8 @@ awdl/
     semantic.py           # Stage 3: semantic analysis
     ir.py                  # Stage 4: DAG intermediate representation
     optimizer.py             # Stage 5: dead-step elimination, parallel grouping
+    codegen.py                 # Stage 6: JSON execution plan
+    interpreter.py               # Stage 7: runtime execution, retry recovery
   examples/
     researcher.awdl        # valid example pipeline
     broken.awdl              # syntax error + recovery
@@ -114,7 +120,9 @@ awdl/
     duplicate_step.awdl            # semantic error: duplicate step
     dead_step.awdl                   # optimizer: dead-step elimination
     parallel.awdl                     # optimizer: parallel-level grouping
+    retry_demo.awdl                     # runtime: on_error retry (see demo_retry.py)
   main.py            # CLI entry point
+  demo_retry.py      # standalone retry-recovery / retry-exhaustion demo
 ```
 
 ## Author
