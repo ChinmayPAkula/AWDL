@@ -82,11 +82,21 @@ class Parser:
     def parse_program(self) -> Program:
         program = Program()
         while not self._check(TokenType.EOF):
+            pos_before = self.pos
             try:
                 program.agents.append(self._parse_agent())
             except ParseError as e:
                 self.errors.append(e)
                 self._synchronize()
+                # _synchronize() stops AT a safe token without consuming it, so
+                # if the failure happened before any token was consumed (e.g. an
+                # agent body missing its required 'input' declaration, where the
+                # very next token already looks like a safe restart point), the
+                # parser would retry the same failing position forever. Force at
+                # least one token of progress so top-level recovery always
+                # terminates.
+                if self.pos == pos_before and not self._check(TokenType.EOF):
+                    self._advance()
         return program
 
     def _parse_agent(self) -> AgentDecl:
