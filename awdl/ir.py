@@ -32,6 +32,7 @@ class AgentIR:
     agent_name: str
     nodes: dict[str, IRNode]               # step name -> IRNode
     entry_input: str                       # the agent's declared input name
+    entry_input_type: str                  # the agent's declared input type
     on_error: OnErrorDecl | None
 
 
@@ -59,11 +60,13 @@ def build_ir(agent: AgentDecl, symtab: SymbolTable) -> AgentIR:
         )
 
     entry_input = symtab.input_decl.name if symtab.input_decl is not None else ""
+    entry_input_type = symtab.input_decl.type_name if symtab.input_decl is not None else ""
 
     return AgentIR(
         agent_name=agent.name,
         nodes=nodes,
         entry_input=entry_input,
+        entry_input_type=entry_input_type,
         on_error=agent.on_error,
     )
 

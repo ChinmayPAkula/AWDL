@@ -57,3 +57,40 @@ against both step and input producers.
 
 Result: 47/47 tests pass; all 7 Phase 1/2 example files plus the 2 new
 typed-parameter fixtures behave as expected; `demo_retry.py` unaffected.
+
+## 2026-10-22 - Step 3: Code generation (JSON execution plan)
+
+Rewrote `awdl/codegen.py` to the plan schema specified by the Phase 3 PRD
+(section 4.2), replacing the flat, pre-PRD guess that was in the repo before
+this PRD existed. `generate_plan(agent_ir, report, chain_endpoints)` now
+emits `levels` (the optimizer's `parallel_levels()` grouping, after dead-step
+removal, steps sorted by name within a level for determinism), an `input`
+object with name and type, an `on_error` object, and `final_outputs`: the
+outputs of chain-ending steps if the agent has any chains, else the outputs
+of whatever nothing else consumes.
+
+This needed one small, additive IR change: `AgentIR` gained an
+`entry_input_type` field (the agent's declared input type wasn't previously
+carried on the IR, only its name), populated in `ir.build_ir()` and
+propagated through `optimizer.optimize()`'s reconstruction of the optimized
+`AgentIR`.
+
+Found and documented a real edge case while testing `final_outputs`: an
+agent with *no* declared chains, where a step's output is never consumed,
+has that step removed by dead-step elimination (that's the exact definition
+of "dead" without a chain to protect it) - so the "steps nobody consumes"
+fallback branch of `final_outputs` only ever sees genuinely-kept output,
+never a false positive. Not a bug; documented as expected optimizer
+behavior.
+
+`main.py`'s old pre-PRD Stage 6/7 wiring (built as a guess before this PRD
+existed) was removed, since the PRD requires bare `python main.py file.awdl`
+to keep producing exactly the Stage 1-5 output it always has, with Stages
+6-7 moved behind CLI flags added in a later step. The old `demo_retry.py`
+script and `examples/retry_demo.awdl` (built against the same pre-PRD
+interpreter) were removed; the PRD's own `--fail`-flag-driven
+`retry_recovers.awdl`/`retry_exhausted.awdl` fixtures supersede them.
+
+Result: 54/54 tests pass (7 new in `test_codegen.py`); all 9 example files
+(7 original + 2 typed-parameter ones from step 2) still compile through
+Stages 1-5 with no regressions.

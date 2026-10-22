@@ -48,6 +48,7 @@ def optimize(agent_ir: AgentIR, chain_endpoints: set[str] | None = None) -> tupl
         agent_name=agent_ir.agent_name,
         nodes=live_nodes,
         entry_input=agent_ir.entry_input,
+        entry_input_type=agent_ir.entry_input_type,
         on_error=agent_ir.on_error,
     )
 
