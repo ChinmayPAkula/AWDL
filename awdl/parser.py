@@ -12,9 +12,16 @@ Grammar (informal EBNF):
     program     := agent*
     agent       := 'agent' IDENT '{' input_decl step_decl* chain_decl* on_error_decl? '}'
     input_decl  := 'input' ':' IDENT ':' IDENT
-    step_decl   := 'step' IDENT '(' [IDENT (',' IDENT)*] ')' '->' IDENT ':' IDENT
+    step_decl   := 'step' IDENT '(' [param (',' param)*] ')' '->' IDENT ':' IDENT
+    param       := IDENT [':' IDENT]
     chain_decl  := IDENT ('->' IDENT)+
     on_error    := 'on_error' ':' 'retry' '(' NUMBER ')'
+
+    A parameter's type annotation (": TYPE") is optional and backward
+    compatible with Phase 1/2 programs - "step s(x)" and "step s(x : string)"
+    both parse. An untyped parameter only gets the undefined-reference check;
+    a typed one additionally gets the producer/consumer type-mismatch check
+    (see semantic.py).
 
 On a syntax error, the parser records it and performs panic-mode recovery:
 it skips tokens until it reaches a token that could plausibly start the
@@ -23,7 +30,7 @@ doesn't prevent the rest of the file from being checked.
 """
 
 from .lexer import Token, TokenType
-from .ast_nodes import Program, AgentDecl, InputDecl, StepDecl, ChainDecl, OnErrorDecl
+from .ast_nodes import Program, AgentDecl, InputDecl, StepDecl, ChainDecl, OnErrorDecl, Param
 
 
 class ParseError(Exception):
@@ -142,10 +149,10 @@ class Parser:
 
         params = []
         if not self._check(TokenType.RPAREN):
-            params.append(self._expect(TokenType.IDENT, "parameter name").lexeme)
+            params.append(self._parse_param())
             while self._check(TokenType.COMMA):
                 self._advance()
-                params.append(self._expect(TokenType.IDENT, "parameter name").lexeme)
+                params.append(self._parse_param())
 
         self._expect(TokenType.RPAREN, "')'")
         self._expect(TokenType.ARROW, "'->'")
@@ -160,6 +167,15 @@ class Parser:
             output_type=out_type.lexeme,
             line=step_tok.line,
         )
+
+    def _parse_param(self) -> Param:
+        name_tok = self._expect(TokenType.IDENT, "parameter name")
+        type_name = None
+        if self._check(TokenType.COLON):
+            self._advance()
+            type_tok = self._expect(TokenType.IDENT, "parameter type")
+            type_name = type_tok.lexeme
+        return Param(name=name_tok.lexeme, type_name=type_name)
 
     def _parse_chain(self) -> ChainDecl:
         names = [self._expect(TokenType.IDENT, "step name").lexeme]

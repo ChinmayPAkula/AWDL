@@ -46,13 +46,13 @@ def build_ir(agent: AgentDecl, symtab: SymbolTable) -> AgentIR:
     for step in agent.steps:
         depends_on = set()
         for param in step.params:
-            producer = symtab.resolve(param)
+            producer = symtab.resolve(param.name)
             if producer is not None and hasattr(producer, "params"):  # a StepDecl
                 depends_on.add(producer.name)
 
         nodes[step.name] = IRNode(
             name=step.name,
-            inputs=list(step.params),
+            inputs=[p.name for p in step.params],
             output=step.output_name,
             output_type=step.output_type,
             depends_on=depends_on,

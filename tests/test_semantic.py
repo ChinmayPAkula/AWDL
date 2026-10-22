@@ -125,6 +125,64 @@ def test_agent_with_no_on_error_has_no_errors():
     assert _errors(source) == []
 
 
+def test_typed_param_matching_producer_type_has_no_error():
+    source = """
+    agent Researcher {
+      input: query : string
+      step search(query : string) -> results : list
+      step summarize(results : list) -> summary : string
+    }
+    """
+    assert _errors(source) == []
+
+
+def test_typed_param_mismatch_against_step_producer():
+    source = """
+    agent Researcher {
+      input: query : string
+      step search(query) -> results : string
+      step summarize(results : list) -> summary : string
+    }
+    """
+    errors = _errors(source)
+    assert len(errors) == 1
+    assert "expects 'results' as list but 'search' produces string" in str(errors[0])
+
+
+def test_typed_param_mismatch_against_input_producer():
+    source = """
+    agent Researcher {
+      input: query : string
+      step search(query : number) -> results : list
+    }
+    """
+    errors = _errors(source)
+    assert any("expects 'query' as number but 'query' produces string" in str(e) for e in errors)
+
+
+def test_typed_param_unknown_type():
+    source = """
+    agent Researcher {
+      input: query : string
+      step search(query : stringg) -> results : list
+    }
+    """
+    errors = _errors(source)
+    assert any("unknown type 'stringg'" in str(e) for e in errors)
+
+
+def test_untyped_param_skips_mismatch_check():
+    source = """
+    agent Researcher {
+      input: query : string
+      step search(query) -> results : string
+      step summarize(results) -> summary : string
+    }
+    """
+    # results is string, summarize doesn't declare a type for it - no mismatch error
+    assert _errors(source) == []
+
+
 def test_collects_multiple_errors_without_stopping_at_first():
     source = """
     agent Researcher {

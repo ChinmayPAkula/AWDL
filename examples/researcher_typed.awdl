@@ -1,0 +1,15 @@
+# Expected outcome: no errors at any stage. Typed variant of researcher.awdl -
+# every parameter now carries an explicit type, and each one matches what its
+# producer actually produces, so the Phase 3 type-mismatch check passes too.
+
+agent Researcher {
+  input: query : string
+
+  step search(query : string) -> results : list
+  step summarize(results : list) -> summary : string
+  step validate(summary : string) -> final : string
+
+  search -> summarize -> validate
+
+  on_error: retry(3)
+}

@@ -8,11 +8,14 @@ program is also meaningful:
 
   a) undefined-reference detection  — every step parameter must resolve to
      the agent's input or another step's output
-  b) type compatibility             — every value flowing between steps
-     must have one of AWDL's known types
-  c) cycle detection                — the chain-derived dependency graph
+  b) known-type checking            — every declared type (input, output,
+     and a typed parameter) must be one of AWDL's known types
+  c) producer/consumer type mismatch — a *typed* parameter's declared type
+     must match the type of whatever produces that value (Phase 3; an
+     untyped parameter only gets the undefined-reference check)
+  d) cycle detection                — the chain-derived dependency graph
      must be acyclic (DFS with a "visiting" set)
-  d) chain consistency              — every name in a chain must be an
+  e) chain consistency              — every name in a chain must be an
      actually-declared step
 
 Like the parser, the analyzer does not stop at the first error: it collects
@@ -23,6 +26,12 @@ from .ast_nodes import Program, AgentDecl
 from .symbol_table import SymbolTable, DuplicateStepError
 
 KNOWN_TYPES = {"string", "number", "boolean", "list", "object"}
+
+
+def _produced_type(decl) -> str:
+    """decl is either an InputDecl (type_name) or a StepDecl (output_type) -
+    whichever symtab.resolve() returned as the producer of a variable."""
+    return decl.type_name if hasattr(decl, "type_name") else decl.output_type
 
 
 class SemanticError(Exception):
@@ -79,10 +88,29 @@ class SemanticAnalyzer:
                     step.line,
                 ))
             for param in step.params:
-                producer = symtab.resolve(param)
+                producer = symtab.resolve(param.name)
                 if producer is None:
                     self.errors.append(SemanticError(
-                        f"step '{step.name}' references undefined parameter '{param}'",
+                        f"step '{step.name}' references undefined parameter '{param.name}'",
+                        step.line,
+                    ))
+                    continue
+
+                if param.type_name is None:
+                    continue  # untyped parameter: no mismatch check to run
+
+                if param.type_name not in KNOWN_TYPES:
+                    self.errors.append(SemanticError(
+                        f"step '{step.name}' parameter '{param.name}' has unknown type '{param.type_name}'",
+                        step.line,
+                    ))
+                    continue
+
+                actual_type = _produced_type(producer)
+                if actual_type != param.type_name:
+                    self.errors.append(SemanticError(
+                        f"step '{step.name}' expects '{param.name}' as {param.type_name} "
+                        f"but '{producer.name}' produces {actual_type}",
                         step.line,
                     ))
 
@@ -125,7 +153,7 @@ class SemanticAnalyzer:
         deps: dict[str, set[str]] = {step.name: set() for step in agent.steps}
         for step in agent.steps:
             for param in step.params:
-                producer = symtab.resolve(param)
+                producer = symtab.resolve(param.name)
                 if producer is not None and hasattr(producer, "params"):  # a StepDecl, not the InputDecl
                     deps[step.name].add(producer.name)
         return deps

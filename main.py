@@ -70,7 +70,11 @@ def main():
         for inp in agent.inputs:
             print(f"  input  {inp.name}: {inp.type_name}")
         for step in agent.steps:
-            print(f"  step   {step.name}({', '.join(step.params)}) -> {step.output_name}: {step.output_type}")
+            params_str = ', '.join(
+                f"{p.name}: {p.type_name}" if p.type_name else p.name
+                for p in step.params
+            )
+            print(f"  step   {step.name}({params_str}) -> {step.output_name}: {step.output_type}")
         for chain in agent.chains:
             print(f"  chain  {' -> '.join(chain.step_names)}")
         if agent.on_error:

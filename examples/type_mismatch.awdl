@@ -1,0 +1,13 @@
+# Expected outcome: semantic error.
+# 'summarize' declares its parameter 'results' as type list, but 'search'
+# (the step that actually produces 'results') is declared to output string
+# -> producer/consumer type mismatch.
+
+agent Researcher {
+  input: query : string
+
+  step search(query) -> results : string
+  step summarize(results : list) -> summary : string
+
+  search -> summarize
+}

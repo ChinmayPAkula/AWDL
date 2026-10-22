@@ -17,9 +17,19 @@ class InputDecl:
 
 
 @dataclass
+class Param:
+    """A step parameter. type_name is None for an untyped parameter
+    (step summarize(results) -> ...), set when the author wrote one
+    (step summarize(results : list) -> ...). Both forms are valid AWDL;
+    only a typed parameter gets the producer/consumer type-mismatch check."""
+    name: str
+    type_name: str | None = None
+
+
+@dataclass
 class StepDecl:
     name: str
-    params: list[str]         # names of inputs this step consumes, e.g. ["query"]
+    params: list[Param]       # inputs this step consumes, e.g. [Param("query")]
     output_name: str          # e.g. "results"
     output_type: str          # e.g. "list"
     line: int = 0

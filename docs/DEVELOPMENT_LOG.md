@@ -26,3 +26,34 @@ suite (parser, semantic, IR, optimizer) confirms still passes unchanged.
 
 Result: 39/39 baseline tests pass; all 7 existing example files still produce
 their previously-documented output with no regressions.
+
+## 2026-10-22 - Step 2: Typed parameters
+
+Closed the gap flagged in the Phase 2 report (producer/consumer type
+compatibility was never checked, only that types were individually known).
+
+Grammar change, backward compatible: `param := IDENT [':' IDENT]`, so both
+`step s(x)` and `step s(x : string)` still parse. Added `Param(name,
+type_name)` to `ast_nodes.py`; `StepDecl.params` is now `list[Param]` instead
+of `list[str]`. Updated every consumer: `parser.py` (`_parse_param()`),
+`semantic.py` (reads `param.name`, plus the new mismatch check),
+`ir.py` (`IRNode.inputs = [p.name for p in step.params]`), and `main.py`'s
+Stage 2 printout.
+
+New semantic check in `semantic.py`: when a parameter has a declared type
+and resolves to a real producer (the agent's input or another step's
+output), the types must match exactly; mismatch is a `SemanticError`
+naming the step, parameter, expected type, and actual type, e.g.
+`step 'summarize' expects 'results' as list but 'search' produces string`.
+An untyped parameter still gets the undefined-reference check but skips the
+mismatch check. An unknown type name on a parameter is flagged the same way
+as an unknown output type.
+
+New fixtures: `examples/type_mismatch.awdl` (produces exactly the error
+above) and `examples/researcher_typed.awdl` (a fully-typed, passing variant
+of the main example). Added 8 new tests across `test_parser.py` and
+`test_semantic.py` covering typed/untyped/mismatched/unknown-type parameters
+against both step and input producers.
+
+Result: 47/47 tests pass; all 7 Phase 1/2 example files plus the 2 new
+typed-parameter fixtures behave as expected; `demo_retry.py` unaffected.

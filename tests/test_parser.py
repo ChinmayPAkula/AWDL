@@ -74,6 +74,31 @@ def test_missing_input_declaration_is_a_syntax_error():
     assert "expected 'input' declaration" in str(errors[0])
 
 
+def test_untyped_param_has_no_type_name():
+    source = "agent X { input: q : string\n step a(q) -> b : string }"
+    program, errors = parse(tokenize(source))
+    assert errors == []
+    assert program.agents[0].steps[0].params[0].type_name is None
+
+
+def test_typed_param_parses_its_type():
+    source = "agent X { input: q : string\n step a(q : string) -> b : string }"
+    program, errors = parse(tokenize(source))
+    assert errors == []
+    param = program.agents[0].steps[0].params[0]
+    assert param.name == "q"
+    assert param.type_name == "string"
+
+
+def test_mixed_typed_and_untyped_params():
+    source = "agent X { input: q : string\n step a(q, r : number) -> b : string }"
+    program, errors = parse(tokenize(source))
+    assert errors == []
+    params = program.agents[0].steps[0].params
+    assert params[0].type_name is None
+    assert params[1].type_name == "number"
+
+
 def test_multiple_agents_in_one_file():
     source = """
     agent A { input: x : string }
